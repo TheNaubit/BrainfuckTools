@@ -2,10 +2,12 @@
 #include <stdio.h>
 #include <bits/stdc++.h>
 #include <string.h>
-#include <argp.h>
-#include <stdbool.h>
+#include <fstream>
+#include <streambuf>
 
+#define BF_INTERPRETER_VERSION 1
 #define DEFAULT_BF_MEMORY 30000
+#define DEFAULT_DUMP_MEMORY 32
 
 using namespace std;
 
@@ -17,35 +19,34 @@ int cursor; // Current in-memory position
 
 int debug_mode = 0;
 int verbose_mode = 0;
-int size_memory_dump = 40;
+int size_memory_dump = DEFAULT_DUMP_MEMORY;
 int size_brainfuck_memory = DEFAULT_BF_MEMORY;
 
-char doc[] = "A program which runs Brainfuck code with several extra options.";
-static struct argp_option options[] = {
-        {"verbose", 'v', 0, 0, "Verbose mode, it shows all the program outputs (except debug output if not enabled)"},
-        {"debug", 'd', 0, 0, "Debug mode, it shows all the debug outputs (including explanations of every action and memory dumps)"},
-        {"text", 't', "TEXT", 0, "It runs a brainfuck code, do not include new lines on it (except the final one)"},
-        {"file", 'f', "FILE", 0, "It runs a brainfuck code from a file (not compatible with -t arg)"},
-        {"memorySize", 'm', "SIZE", 0, "It sets the size of the memory of the Brainfuck interpreter. Not recommended less than 30000"},
-        {"dumpSize", 's', "SIZE", 0, "It sets the size of the memory dumps (in debug mode). By default 40"},
-        { 0 }
-};
-struct arguments {
-    bool verbose;
-    bool debug;
-    char *text;
-    char *file;
-    int *memorySize;
-    int *dumpSize;
-};
-
 int parseArgs(int argc, char** argv);
-string optimizeCode(string code);
+string cleanCode(string code);
 int initializeBrainfuckInterpreter(int memorySize);
 int interprete(int code_cursor, char order);
 int setValueInBFMemory(int cursor, int value);
 char getValueInBFMemory(int cursor);
 int dumpMemory(int size);
+int showHelp();
+
+int showHelp(){
+    printf("--- Brainfuck Interpreter (bit) v.%d ---\n",BF_INTERPRETER_VERSION);
+    printf("This tool has two modes: by arguments and interactive.\n");
+    printf("If you don't enter arguments or if you don't enter Brainfuck code in\n");
+    printf("the arguments (with -t or -f), the interactive mode will run.\n\n");
+    printf("Arguments:\n");
+    printf("-h: It shows this help.\n");
+    printf("-v: Verbose mode, it shows all the program outputs (except debug output if it is not enabled).\n");
+    printf("-t CODE: It runs the Brainfuck code. You have to enter the CODE without spaces nor newlines in this mode.\n");
+    printf("-f PATH_TO_FILE: It runs the Brainfuck code inside a file.\n");
+    printf("-m INT: It sets the size of the Brainfuck interpreters memory. Not recommended less than 30000. (It represents 30000 bytes)\n");
+    printf("-s INT: It sets the size of the memory dumps (in debug mode). By default 32.\n");
+    printf("-o: (Not implemented yet!) It optimizes the code before running it. For big Brainfuck programs this option is recommended.\n\n");
+    printf("For any other question or issue check the GitHub repo: https://github.com/NauCode/BrainfuckTools\n");
+    return 0;
+}
 
 // Valid args:
 // -d: Debug mode enabled
@@ -57,7 +58,11 @@ int dumpMemory(int size);
 // -s {int}: It sets the size of the memory dumps (in debug mode). By default 40.
 
 int parseArgs(int argc, char** argv){
+    // We have to declarate these two vars here
+    // since they can't be declared in case
+    ifstream fFile;
     string code = "";
+    //
     int next_mustnt_arg = 0; // It 1, the next argv[argi] has to be something
     // not starting by -
     char next_mustnt_arg_from; // The command the next not command arg is from
@@ -112,12 +117,14 @@ int parseArgs(int argc, char** argv){
                 break;
             case 'h':
                 // Shows the help
-                break;
+                showHelp();
+                return -3; // This return will indicate the program to end (since you just wanted to see the help)
+                break; // Not really necessary this break, I just keep it since I like all the case statements with their break
             default:
                 if(next_mustnt_arg==1){
                     switch(next_mustnt_arg_from){
                         case 't':
-                            code = optimizeCode(argv[argi]);
+                            code = cleanCode(argv[argi]);
                             code_memory_size = code.length();
                             code_memory = static_cast<unsigned char *>(malloc(code_memory_size * sizeof(char)));
 
@@ -127,6 +134,21 @@ int parseArgs(int argc, char** argv){
                             break;
                         case 'f':
                             // Load the file and parse the code
+                            fFile.open(argv[argi]);
+                            if(fFile){
+                                stringstream buffer;
+                                buffer << fFile.rdbuf();
+                                code = cleanCode(buffer.str());
+                                code_memory_size = code.length();
+                                code_memory = static_cast<unsigned char *>(malloc(code_memory_size * sizeof(char)));
+
+                                for(int i=0; i<code_memory_size; i++){
+                                    code_memory[i] = code.at(i);
+                                }
+                            }else{
+                                cout << "Error: There was some error reading the input file!\n";
+                                return -5;
+                            }
                             break;
                         case 'm':
                             // Not using atoi since some systems have problems with it
@@ -143,7 +165,7 @@ int parseArgs(int argc, char** argv){
                     next_mustnt_arg = 0;
                 }else{
                     printf("Error: Invalid args!\n");
-                    return -2;
+                    return -4;
                 }
                 break;
 
@@ -151,8 +173,12 @@ int parseArgs(int argc, char** argv){
     }
 
     if(code==""){
-        printf("No code entered! Use -t or -f next time!\n");
-        return -1;
+        if(argc>1){
+            printf("No code entered! Use -t or -f next time!\n");
+            return -1;
+        }else{
+            return -2;
+        }
     }
 
     return 0;
@@ -164,53 +190,104 @@ int main(int argc, char** argv) {
 
     // Since we have args (remember we always have argc>=1 since argv[0] is the
     // ./{executable_file}), we have to use them!
-    if(argc>1){
-        // Let's loop the args
-        for(int i = 1; i < argc; ++i){
-            cout << argv[i] << "\n";
-        }
-        parseArgs(argc,argv);
-    }else {
-        //code = "++>+++++[<+>-]++++++++[<++++++>-]<.";
-        cout << "Set the code you want to run:\n";
-        // Reads input with spaces!
-        getline(cin >> ws, code); //cin >> code;
 
-        code = optimizeCode(code);
+    int parseResult = parseArgs(argc,argv);
 
-        code_memory_size = code.length();
+    switch(parseResult){
+        case 0:
+            // Nothing to do, code is loaded, everything ready to run
+            // This is here just for... beauty?
+            break;
+        case -1:
+            // We got args but no code!!
+            // So we will ask the user for it
+        case -2:
+            // In this case the users called the program without args
+            // So we will ask the user for the code to run
+            if(verbose_mode) {
+                cout << "Set the code you want to run:\n";
+            }
 
-        code_memory = static_cast<unsigned char *>(malloc(code_memory_size * sizeof(char)));
+            // Reads input with spaces!
+            getline(cin >> ws, code);
 
-        for(int i=0; i<code_memory_size; i++){
-            code_memory[i] = code.at(i);
-        }
+            code = cleanCode(code);
+            code_memory_size = code.length();
+            code_memory = static_cast<unsigned char *>(malloc(code_memory_size * sizeof(char)));
+
+            // We have to set all the Brainfuck interpreter memory to zeroes
+            // I don't like doing it with this loop, maybe later I will research a better way
+            for(int i=0; i<code_memory_size; i++){
+                code_memory[i] = code.at(i);
+            }
+            break;
+        case -3:
+            // In this case maybe we sent some args but we also printed the help menu, so
+            // we end the program after showing it, without running anything more
+            return 0; // Since we are in the main function, I can end the program like this
+            // exit(0); But I could use this!
+            break; // And yeah, this break is just because I want to close all the case instructions
+            // with break;, but it will never run!
+        case -4:
+            // In this case we entered some invalid args causing the program to don't run
+            // We could just fix/skip those args but... I prefer this way
+            return -1; // We end the program with error -1
+            // exit(-1); This would also work
+            break;
+        case -5:
+            // In this case we were not able to read the file user send as arg in -f PATH_TO_FILE
+            return -2; // We end the program with error -2
+            // exit(-2);
+            break;
+        default:
+            // The default case should never happen, but since it should never happen, if it happens
+            // it has to be an error, so we handle it like an error!
+            return -999; // An unknown error
+            // exit(-999); ?
+            break;
     }
 
+    // Once args are done, we have to initialize the interpreter
     if(initializeBrainfuckInterpreter(size_brainfuck_memory)!=0){
         if(debug_mode) {
-            cout << "We had some error initializing Brainfuck interpreter!\n";
+            printf("Error: We had some error initializing Brainfuck interpreter!\n");
         }
-        return -1;
+        // If we had some error initializing it, we can't run the Brainfuck programs
+        // So we exit with error -2
+        return -2;
+        // exit(-2); As you prefer
     }else{
-        if(debug_mode)
-            cout << "Brainfuck interpreter initialized!\n";
+        // I am not sure if this should go as verbose or debug
+        if(verbose_mode) {
+            printf("Brainfuck interpreter initialized!\n");
+        }
     }
 
+    // If we are debugging a program, we want to print the initial interpreter memory
+    // Full of zeros of course
     if(debug_mode){
         dumpMemory(size_memory_dump);
     }
 
+    // I usually like to declare all vars at the beginning of the function
+    // (Except temporal vars)
+    // But I think this goes better here
     int code_cursor = 0;
     while(code_cursor>=0 && code_cursor<code_memory_size){
         code_cursor = interprete(code_cursor, code_memory[code_cursor]);
     }
 
-
+    // If everything went fine we can end the program with no errors
     return 0;
+    // exit(0); ?
 }
 
-string optimizeCode(string code){
+// Function: cleanCode
+// Args: 1, code, a string with the Brainfuck code we want to clean
+// What does it do? It cleans a string. It removes all the characters Brainfuck is
+// not able to run (so it will remove new lines, spaces and any unknown char)
+// Return: A string, with the cleaned code
+string cleanCode(string code){
     string new_code = "";
     for(int i=0;i<code.length();i++){
         char cI = code.at(i);
