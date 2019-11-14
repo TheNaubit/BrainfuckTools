@@ -20,6 +20,7 @@ int memory_cursor; // Current in-memory position
 int dynamic_bf_memory_mode = 0;
 int debug_mode = 0;
 int verbose_mode = 0;
+int memory_dump_mode = 0;
 int size_memory_dump = DEFAULT_DUMP_MEMORY;
 int size_brainfuck_memory = DEFAULT_BF_MEMORY;
 
@@ -50,7 +51,9 @@ int showHelp(){
     cout << "-f PATH_TO_FILE: It runs the Brainfuck code inside a file.\n";
     cout << "-m INT: It sets the size of the Brainfuck interpreters memory. Not recommended less than 30000. (It represents 30000 bytes)\n";
     cout << "-s INT: It sets the size of the memory dumps (in debug mode). By default 32.\n";
-    cout << "-i: (Not implemented yet!) It uses dynamic memory so no need to specify the Brainfuck interpreters memory (it initialized with 30000 bytes or what you specify with -m arg).\n";
+    cout << "-i: It uses dynamic memory so no need to specify the Brainfuck interpreters memory (it initialized with 30000 bytes or what you specify with -m arg).\n";
+    cout << "-p MODE: Print memory dumps after every action (if debug mode is enabled, they will be always show).\n";
+    cout << "If MODE=0, it shows memory dump after every instruction; MODE=1 only shows memory at the end of the program.\n";
     cout << "-o: (Not implemented yet!) It optimizes the code before running it. For big Brainfuck programs this option is recommended.\n\n";
     cout << "For any other question or issue check the GitHub repo: https://github.com/NauCode/BrainfuckTools\n";
     return 0;
@@ -145,7 +148,7 @@ int main(int argc, char** argv) {
 
     // If we are debugging a program, we want to print the initial interpreter memory
     // Full of zeros of course
-    if(debug_mode){
+    if(debug_mode || memory_dump_mode== 1){
         dumpMemory(size_memory_dump);
     }
 
@@ -155,6 +158,12 @@ int main(int argc, char** argv) {
     int code_cursor = 0;
     while(code_cursor>=0 && code_cursor<getCodeMemorySize()){
         code_cursor = interprete(code_cursor);
+    }
+
+    // Only show it when memory_dump_mode==2 since with memory_dump_mode==1 (and debug_mode==1)
+    // already show last instruction memory dump in interprete function
+    if(memory_dump_mode==2){
+        dumpMemory(size_memory_dump);
     }
 
     // If everything went fine we can end the program with no errors
@@ -208,6 +217,10 @@ int parseArgs(int argc, char** argv){
             case 'v':
                 verbose_mode=1;
                 break;
+            case 'p':
+                next_mustnt_arg=1;
+                next_mustnt_arg_from='p';
+                break;
             case 't':
                 if(code!=""){
                     cout << "Error: You already set the code source!\n";
@@ -243,6 +256,14 @@ int parseArgs(int argc, char** argv){
             default:
                 if(next_mustnt_arg==1){
                     switch(next_mustnt_arg_from){
+                        case 'p':
+                            // If -p 0
+                            if(argv[argi]==0){
+                                memory_dump_mode = 1; // Mode 0
+                            }else{ // If -p 1 or -p {whatever}
+                                memory_dump_mode = 2; // Mode 1
+                            }
+                            break;
                         case 't':
                             code = cleanCode(argv[argi]);
                             code_memory_size = code.length();
@@ -448,7 +469,7 @@ int interprete(int code_cursor){
             break;
     }
 
-    if(debug_mode){
+    if(debug_mode || memory_dump_mode==1){
         dumpMemory(size_memory_dump);
     }
 
