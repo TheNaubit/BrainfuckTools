@@ -4,6 +4,7 @@
 #include <string.h>
 #include <fstream>
 #include <streambuf>
+#include <time.h>
 
 #define BF_INTERPRETER_VERSION 1
 #define DEFAULT_BF_MEMORY 30000
@@ -21,6 +22,7 @@ int dynamic_bf_memory_mode = 0;
 int debug_mode = 0;
 int verbose_mode = 0;
 int memory_dump_mode = 0;
+int clock_mode = 0;
 int size_memory_dump = DEFAULT_DUMP_MEMORY;
 int size_brainfuck_memory = DEFAULT_BF_MEMORY;
 
@@ -54,6 +56,7 @@ int showHelp(){
     cout << "-i: It uses dynamic memory so no need to specify the Brainfuck interpreters memory (it initialized with 30000 bytes or what you specify with -m arg).\n";
     cout << "-p MODE: Print memory dumps after every action (if debug mode is enabled, they will be always show).\n";
     cout << "If MODE=0, it shows memory dump after every instruction; MODE=1 only shows memory at the end of the program.\n";
+    cout << "-c: Enable time measure (to analyze the speed of a Brainfuck program in the machine with current options).\n";
     cout << "-o: (Not implemented yet!) It optimizes the code before running it. For big Brainfuck programs this option is recommended.\n\n";
     cout << "For any other question or issue check the GitHub repo: https://github.com/NauCode/BrainfuckTools\n";
     return 0;
@@ -156,9 +159,18 @@ int main(int argc, char** argv) {
     // (Except temporal vars)
     // But I think this goes better here
     int code_cursor = 0;
+    clock_t start_time, stop_time;
+    if(clock_mode)
+        start_time = clock();
     while(code_cursor>=0 && code_cursor<getCodeMemorySize()){
         code_cursor = interprete(code_cursor);
     }
+
+    if(clock_mode){
+        stop_time = clock();
+        cout << fixed << setprecision(17) << "It took " << double(((double)(stop_time-start_time))/CLOCKS_PER_SEC) << " seconds to execute!\n";
+    }
+
 
     // Only show it when memory_dump_mode==2 since with memory_dump_mode==1 (and debug_mode==1)
     // already show last instruction memory dump in interprete function
@@ -216,6 +228,9 @@ int parseArgs(int argc, char** argv){
                 break;
             case 'v':
                 verbose_mode=1;
+                break;
+            case 'c':
+                clock_mode=1;
                 break;
             case 'p':
                 next_mustnt_arg=1;
