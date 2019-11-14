@@ -49,6 +49,7 @@ int showHelp(){
     cout << "-f PATH_TO_FILE: It runs the Brainfuck code inside a file.\n";
     cout << "-m INT: It sets the size of the Brainfuck interpreters memory. Not recommended less than 30000. (It represents 30000 bytes)\n";
     cout << "-s INT: It sets the size of the memory dumps (in debug mode). By default 32.\n";
+    cout << "-i: (Not implemented yet!) It uses dynamic memory so no need to specify the Brainfuck interpreters memory (it overrides -m arg).\n";
     cout << "-o: (Not implemented yet!) It optimizes the code before running it. For big Brainfuck programs this option is recommended.\n\n";
     cout << "For any other question or issue check the GitHub repo: https://github.com/NauCode/BrainfuckTools\n";
     return 0;
