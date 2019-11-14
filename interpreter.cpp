@@ -17,6 +17,7 @@ int bf_memory_size;
 int code_memory_size;
 int memory_cursor; // Current in-memory position
 
+int dynamic_bf_memory_mode = 0;
 int debug_mode = 0;
 int verbose_mode = 0;
 int size_memory_dump = DEFAULT_DUMP_MEMORY;
@@ -49,7 +50,7 @@ int showHelp(){
     cout << "-f PATH_TO_FILE: It runs the Brainfuck code inside a file.\n";
     cout << "-m INT: It sets the size of the Brainfuck interpreters memory. Not recommended less than 30000. (It represents 30000 bytes)\n";
     cout << "-s INT: It sets the size of the memory dumps (in debug mode). By default 32.\n";
-    cout << "-i: (Not implemented yet!) It uses dynamic memory so no need to specify the Brainfuck interpreters memory (it overrides -m arg).\n";
+    cout << "-i: (Not implemented yet!) It uses dynamic memory so no need to specify the Brainfuck interpreters memory (it initialized with 30000 bytes or what you specify with -m arg).\n";
     cout << "-o: (Not implemented yet!) It optimizes the code before running it. For big Brainfuck programs this option is recommended.\n\n";
     cout << "For any other question or issue check the GitHub repo: https://github.com/NauCode/BrainfuckTools\n";
     return 0;
@@ -230,6 +231,9 @@ int parseArgs(int argc, char** argv){
             case 's':
                 next_mustnt_arg=1;
                 next_mustnt_arg_from='s';
+                break;
+            case 'i':
+                dynamic_bf_memory_mode=1;
                 break;
             case 'h':
                 // Shows the help
@@ -481,7 +485,7 @@ int setMemoryCursor(int newValue){
             cout << "[DEBUG] " << "Error: You can't set the memory cursor to less than 0!\n";
         }
         return -1;
-    }else if(newValue>=getBFMemorySize()){
+    }else if(newValue>=getBFMemorySize() && !dynamic_bf_memory_mode){
         if(debug_mode){
             cout << "[DEBUG] " << "Error: You can't set the memory cursor outside the Brainfuck memory!\n";
             cout << "[DEBUG] " << "Current Brainfuck memory is " << getBFMemorySize() << "\n";
@@ -489,6 +493,14 @@ int setMemoryCursor(int newValue){
         }
         return -2;
     }else{
+        if(newValue>=getBFMemorySize() && dynamic_bf_memory_mode){
+            int memory_increase = newValue-getBFMemorySize();
+            bf_memory_size+=memory_increase;
+            bf_memory = static_cast<unsigned char *>(realloc(bf_memory, getBFMemorySize() * sizeof(char)));
+            for(int i=getBFMemorySize()-memory_increase;i<getBFMemorySize();i++){
+                setValueInBFMemory(i,0);
+            }
+        }
         memory_cursor = newValue;
     }
 
@@ -500,9 +512,10 @@ int getMemoryCursor(){
 }
 
 int setValueInBFMemory(int cursor, int value){
-    if(cursor<0 || cursor>=getBFMemorySize()){
-        if(debug_mode)
-            cout << "[DEBUG] "  << "Error: Trying to set value outside the Brainfuck memory!\n";
+    if(cursor<0 ){
+        if(debug_mode) {
+            cout << "[DEBUG] " << "Error: Trying to set value outside the Brainfuck memory!\n";
+        }
         return -1;
     }else if(value<0 || value > 255){
         if(debug_mode){
@@ -511,6 +524,20 @@ int setValueInBFMemory(int cursor, int value){
         }
         return -2;
     }else{
+        if(cursor >= getBFMemorySize()){
+            if(debug_mode) {
+                cout << "[DEBUG] " << "Error: Trying to set value outside the Brainfuck memory!\n";
+            }
+            if(dynamic_bf_memory_mode){
+                if(debug_mode) {
+                    cout << "[DEBUG] " << "But we are using dynamic memory, so just expand it!\n";
+                }
+                bf_memory_size+=1;
+                bf_memory = static_cast<unsigned char *>(realloc(bf_memory, getBFMemorySize() * sizeof(char)));
+            }else{
+                return -1;
+            }
+        }
         bf_memory[cursor] = value;
     }
 
@@ -578,11 +605,14 @@ int getCodeMemorySize(){
 }
 
 int dumpMemory(int size){
-    if(size<0 || size>bf_memory_size){
+    if(size<0){
         if(verbose_mode)
             cout << "Error: Invalid dump size!\n";
         return -1;
     }else{
+        if(size>getBFMemorySize())
+            size=getBFMemorySize();
+
         cout << "\n";
         for(int i=0;i<size;i++){
             if((i+1)%8==0 || i+1==size){
